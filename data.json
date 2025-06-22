@@ -1,0 +1,15 @@
+{
+  "last_update": 0,
+  "sensor_data": {
+    "temp": 0,
+    "hum": 0
+  },
+  "control_params": {
+    "target_temp": 60,
+    "pid": {
+      "Kp": 5.0,
+      "Ki": 0.5,
+      "Kd": 1.0
+    }
+  }
+}

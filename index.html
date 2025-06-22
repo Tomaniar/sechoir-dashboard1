@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <title>Contrôle Séchoir</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
   <style>
     body { font-family: sans-serif; text-align: center; background: #f0f0f0; }
     h2 { margin-top: 30px; }
@@ -25,91 +27,198 @@
       width: 80px;
     }
     .control { margin-top: 15px; }
-    input[type=range] { width: 150px; }
-    button { margin: 0 5px; padding: 5px 10px; }
+    button { 
+      margin: 0 5px; 
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+    .connection-status {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      padding: 5px 10px;
+      border-radius: 15px;
+      font-weight: bold;
+    }
+    .connected { background: #4CAF50; color: white; }
+    .disconnected { background: #f44336; color: white; }
   </style>
 </head>
 <body>
+  <div id="connectionStatus" class="connection-status disconnected">ESP32 Déconnecté</div>
+
   <h1>Tableau de Bord Séchoir</h1>
+
   <div class="card">
     <h2>Température (°C)</h2>
     <canvas id="tempChart" width="200" height="200"></canvas>
-    <div class="val-box" id="tempVal">0°C</div>
+    <div class="val-box" id="tempVal">--°C</div>
   </div>
+
   <div class="card">
     <h2>Humidité (%)</h2>
     <canvas id="humChart" width="200" height="200"></canvas>
-    <div class="val-box" id="humVal">0%</div>
+    <div class="val-box" id="humVal">--%</div>
   </div>
+
   <div class="card">
     <h2>Consigne Température</h2>
     <button onclick="adjustValue('consigneTemp', -1)">-</button>
-    <input type="range" id="consigneTemp" min="30" max="80" value="60" oninput="updateValue(this.id, this.value)">
+    <span id="consigneTempVal" class="val-box">60°C</span>
     <button onclick="adjustValue('consigneTemp', 1)">+</button>
-    <div class="val-box" id="consigneTempVal">60°C</div>
+    <input type="hidden" id="consigneTemp" value="60">
   </div>
+
   <div class="card">
     <h2>Kp / Ki / Kd</h2>
-    <div>
+    <div class="control">
       <label>Kp</label>
-      <button onclick="adjustValue('Kp', -0.1)">-</button>
-      <input type="range" id="Kp" min="0" max="10" step="0.1" value="5" oninput="updateValue(this.id, this.value)">
-      <button onclick="adjustValue('Kp', 0.1)">+</button>
-      <div class="val-box" id="KpVal">5.0</div>
+      <button onclick="adjustKValue('Kp', -0.1)">-</button>
+      <span id="KpVal" class="val-box">5.0</span>
+      <button onclick="adjustKValue('Kp', 0.1)">+</button>
+      <input type="hidden" id="Kp" value="5.0">
     </div>
-    <div>
+    <div class="control">
       <label>Ki</label>
-      <button onclick="adjustValue('Ki', -0.1)">-</button>
-      <input type="range" id="Ki" min="0" max="5" step="0.1" value="0.5" oninput="updateValue(this.id, this.value)">
-      <button onclick="adjustValue('Ki', 0.1)">+</button>
-      <div class="val-box" id="KiVal">0.5</div>
+      <button onclick="adjustKValue('Ki', -0.1)">-</button>
+      <span id="KiVal" class="val-box">0.5</span>
+      <button onclick="adjustKValue('Ki', 0.1)">+</button>
+      <input type="hidden" id="Ki" value="0.5">
     </div>
-    <div>
+    <div class="control">
       <label>Kd</label>
-      <button onclick="adjustValue('Kd', -0.1)">-</button>
-      <input type="range" id="Kd" min="0" max="5" step="0.1" value="1.0" oninput="updateValue(this.id, this.value)">
-      <button onclick="adjustValue('Kd', 0.1)">+</button>
-      <div class="val-box" id="KdVal">1.0</div>
+      <button onclick="adjustKValue('Kd', -0.1)">-</button>
+      <span id="KdVal" class="val-box">1.0</span>
+      <button onclick="adjustKValue('Kd', 0.1)">+</button>
+      <input type="hidden" id="Kd" value="1.0">
     </div>
   </div>
+
   <script>
-    let tempChart = new Chart(document.getElementById('tempChart'), {
+    // Configuration Firebase - À PERSONNALISER
+    const firebaseConfig = {
+      apiKey: "AIzaSyYOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    // Initialisation Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // Initialisation des graphiques
+    const tempChart = new Chart(document.getElementById('tempChart'), {
       type: 'doughnut',
-      data: { labels: ['Temp', 'Reste'], datasets: [{ data: [0, 100], backgroundColor: ['#e63946', '#ccc'] }] },
-      options: { cutout: '70%', responsive: false }
+      data: {
+        datasets: [{
+          data: [0, 100],
+          backgroundColor: ['#e63946', '#f0f0f0']
+        }]
+      },
+      options: {
+        cutout: '75%',
+        responsive: false,
+        plugins: { legend: { display: false } }
+      }
     });
-    let humChart = new Chart(document.getElementById('humChart'), {
+
+    const humChart = new Chart(document.getElementById('humChart'), {
       type: 'doughnut',
-      data: { labels: ['Humidité', 'Reste'], datasets: [{ data: [0, 100], backgroundColor: ['#457b9d', '#ccc'] }] },
-      options: { cutout: '70%', responsive: false }
+      data: {
+        datasets: [{
+          data: [0, 100],
+          backgroundColor: ['#457b9d', '#f0f0f0']
+        }]
+      },
+      options: {
+        cutout: '75%',
+        responsive: false,
+        plugins: { legend: { display: false } }
+      }
     });
-    function adjustValue(id, delta) {
-      let el = document.getElementById(id);
-      el.value = parseFloat(el.value) + delta;
-      updateValue(id, el.value);
+
+    // Gestion des valeurs Kp/Ki/Kd
+    function adjustKValue(id, delta) {
+      const current = parseFloat(document.getElementById(id).value);
+      const max = id === 'Ki' ? 5 : 10;
+      const newValue = Math.max(0, Math.min(current + delta, max));
+      
+      updateValue(id, newValue.toFixed(1));
+      sendToFirebase(id, newValue.toFixed(1));
     }
+
+    // Gestion de la consigne température
+    function adjustValue(id, delta) {
+      const current = parseInt(document.getElementById(id).value);
+      const newValue = Math.max(30, Math.min(current + delta, 80));
+      
+      updateValue(id, newValue);
+      sendToFirebase(id, newValue);
+    }
+
+    // Mise à jour de l'affichage
     function updateValue(id, value) {
-      document.getElementById(id + 'Val').innerText = value + (id.includes('Temp') ? '°C' : '');
-      let url = '/setPID';
-      if (param.includes('K') || param.includes('Temp')) {
-        let data = new URLSearchParams();
-        data.append(id, value);
-        fetch(url, { method: 'POST', body: data });
+      document.getElementById(id).value = value;
+      document.getElementById(id + 'Val').textContent = 
+        value + (id.includes('Temp') ? '°C' : '');
+      
+      // Mise à jour des graphiques si capteurs
+      if (id === 'temp') {
+        tempChart.data.datasets[0].data = [value, 100 - value];
+        tempChart.update();
+      }
+      if (id === 'hum') {
+        humChart.data.datasets[0].data = [value, 100 - value];
+        humChart.update();
       }
     }
-    function refreshMetrics() {
-      fetch('/metrics')
-        .then(res => res.json())
-        .then(data => {
-          tempChart.data.datasets[0].data = [data.temp, 100 - data.temp];
-          humChart.data.datasets[0].data = [data.hum, 100 - data.hum];
-          tempChart.update();
-          humChart.update();
-          document.getElementById('tempVal').innerText = data.temp + '°C';
-          document.getElementById('humVal').innerText = data.hum + '%';
-        });
+
+    // Envoi des données à Firebase
+    function sendToFirebase(param, value) {
+      database.ref('settings/' + param).set(parseFloat(value))
+        .then(() => console.log(`${param} updated to ${value}`))
+        .catch(error => console.error("Firebase error:", error));
     }
-    setInterval(refreshMetrics, 1000);
+
+    // Écoute des données de l'ESP32
+    function setupFirebaseListeners() {
+      // Surveillance température/humidité
+      database.ref('sensors').on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          updateValue('temp', data.temperature.toFixed(1));
+          updateValue('hum', data.humidity.toFixed(1));
+          document.getElementById('connectionStatus').className = "connection-status connected";
+          document.getElementById('connectionStatus').textContent = "ESP32 Connecté";
+        }
+      });
+
+      // Chargement des paramètres initiaux
+      database.ref('settings').once('value').then((snapshot) => {
+        const settings = snapshot.val();
+        if (settings) {
+          if (settings.consigneTemp) updateValue('consigneTemp', settings.consigneTemp);
+          if (settings.Kp) updateValue('Kp', settings.Kp);
+          if (settings.Ki) updateValue('Ki', settings.Ki);
+          if (settings.Kd) updateValue('Kd', settings.Kd);
+        }
+      });
+
+      // Surveillance état connexion
+      database.ref('.info/connected').on('value', (snapshot) => {
+        if (snapshot.val() === false) {
+          document.getElementById('connectionStatus').className = "connection-status disconnected";
+          document.getElementById('connectionStatus').textContent = "ESP32 Déconnecté";
+        }
+      });
+    }
+
+    // Démarrer l'application
+    setupFirebaseListeners();
   </script>
 </body>
 </html>
