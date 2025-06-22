@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Contrôle Séchoir</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #f0f0f0; }
+    h2 { margin-top: 30px; }
+    .card {
+      display: inline-block;
+      background: white;
+      padding: 20px;
+      margin: 20px;
+      border-radius: 15px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+    .val-box {
+      margin-top: 10px;
+      padding: 8px;
+      background: #222;
+      color: #fff;
+      border-radius: 5px;
+      display: inline-block;
+      width: 80px;
+    }
+    .control { margin-top: 15px; }
+    input[type=range] { width: 150px; }
+    button { margin: 0 5px; padding: 5px 10px; }
+  </style>
+</head>
+<body>
+  <h1>Tableau de Bord Séchoir</h1>
+  
+  <div class="card">
+    <h2>Température (°C)</h2>
+    <canvas id="tempChart" width="200" height="200"></canvas>
+    <div class="val-box" id="tempVal">0°C</div>
+  </div>
+
+  <div class="card">
+    <h2>Humidité (%)</h2>
+    <canvas id="humChart" width="200" height="200"></canvas>
+    <div class="val-box" id="humVal">0%</div>
+  </div>
+
+  <div class="card">
+    <h2>Consigne Température</h2>
+    <button onclick="adjustValue('consigneTemp', -1)">-</button>
+    <input type="range" id="consigneTemp" min="30" max="80" value="60" oninput="updateValue(this.id, this.value)">
+    <button onclick="adjustValue('consigneTemp', 1)">+</button>
+    <div class="val-box" id="consigneTempVal">60°C</div>
+  </div>
+
+  <div class="card">
+    <h2>Kp / Ki / Kd</h2>
+    <div>
+      <label>Kp</label>
+      <button onclick="adjustValue('Kp', -0.1)">-</button>
+      <input type="range" id="Kp" min="0" max="10" step="0.1" value="5" oninput="updateValue(this.id, this.value)">
+      <button onclick="adjustValue('Kp', 0.1)">+</button>
+      <div class="val-box" id="KpVal">5.0</div>
+    </div>
+    <div>
+      <label>Ki</label>
+      <button onclick="adjustValue('Ki', -0.1)">-</button>
+      <input type="range" id="Ki" min="0" max="5" step="0.1" value="0.5" oninput="updateValue(this.id, this.value)">
+      <button onclick="adjustValue('Ki', 0.1)">+</button>
+      <div class="val-box" id="KiVal">0.5</div>
+    </div>
+    <div>
+      <label>Kd</label>
+      <button onclick="adjustValue('Kd', -0.1)">-</button>
+      <input type="range" id="Kd" min="0" max="5" step="0.1" value="1.0" oninput="updateValue(this.id, this.value)">
+      <button onclick="adjustValue('Kd', 0.1)">+</button>
+      <div class="val-box" id="KdVal">1.0</div>
+    </div>
+  </div>
+
+  <script>
+    // Stockage local des données (remplace l'API)
+    let sechoirData = {
+      temp: 25,
+      hum: 50,
+      consigneTemp: 60,
+      Kp: 5.0,
+      Ki: 0.5,
+      Kd: 1.0
+    };
+
+    // Initialisation des graphiques
+    let tempChart = new Chart(document.getElementById('tempChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Temp', 'Reste'],
+        datasets: [{
+          data: [sechoirData.temp, 100 - sechoirData.temp],
+          backgroundColor: ['#e63946', '#ccc']
+        }]
+      },
+      options: { 
+        cutout: '70%', 
+        responsive: false,
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    let humChart = new Chart(document.getElementById('humChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Humidité', 'Reste'],
+        datasets: [{
+          data: [sechoirData.hum, 100 - sechoirData.hum],
+          backgroundColor: ['#457b9d', '#ccc']
+        }]
+      },
+      options: { 
+        cutout: '70%', 
+        responsive: false,
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    // Gestion des valeurs
+    function adjustValue(id, delta) {
+      const el = document.getElementById(id);
+      const step = parseFloat(el.step || 1);
+      const newValue = parseFloat(el.value) + (delta * step);
+      el.value = Math.max(parseFloat(el.min), Math.min(newValue, parseFloat(el.max)));
+      updateValue(id, el.value);
+    }
+
+    function updateValue(id, value) {
+      const numValue = parseFloat(value);
+      sechoirData[id] = numValue; // Mise à jour des données locales
+      
+      const displayValue = numValue.toFixed(id.includes('K') ? 1 : 0);
+      document.getElementById(id + 'Val').innerText = displayValue + (id.includes('Temp') ? '°C' : '');
+      
+      // Simulation d'envoi à l'ESP32 (à remplacer par un vrai appel si besoin)
+      console.log(`Paramètre ${id} mis à jour: ${value}`);
+    }
+
+    // Simulation de données aléatoires (à supprimer si vous avez un vrai ESP32)
+    function simulateData() {
+      sechoirData.temp = Math.max(20, Math.min(40, sechoirData.temp + (Math.random() - 0.5)));
+      sechoirData.hum = Math.max(30, Math.min(70, sechoirData.hum + (Math.random() - 0.3)));
+      
+      tempChart.data.datasets[0].data = [sechoirData.temp, 100 - sechoirData.temp];
+      humChart.data.datasets[0].data = [sechoirData.hum, 100 - sechoirData.hum];
+      tempChart.update();
+      humChart.update();
+      
+      document.getElementById('tempVal').innerText = sechoirData.temp.toFixed(1) + '°C';
+      document.getElementById('humVal').innerText = sechoirData.hum.toFixed(1) + '%';
+    }
+
+    // Pour un vrai projet, remplacer par la connexion à l'ESP32
+    setInterval(simulateData, 3000);
+  </script>
+</body>
+</html>
