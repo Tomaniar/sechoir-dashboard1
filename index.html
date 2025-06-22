@@ -31,19 +31,16 @@
 </head>
 <body>
   <h1>Tableau de Bord Séchoir</h1>
-  
   <div class="card">
     <h2>Température (°C)</h2>
     <canvas id="tempChart" width="200" height="200"></canvas>
     <div class="val-box" id="tempVal">0°C</div>
   </div>
-
   <div class="card">
     <h2>Humidité (%)</h2>
     <canvas id="humChart" width="200" height="200"></canvas>
     <div class="val-box" id="humVal">0%</div>
   </div>
-
   <div class="card">
     <h2>Consigne Température</h2>
     <button onclick="adjustValue('consigneTemp', -1)">-</button>
@@ -51,7 +48,6 @@
     <button onclick="adjustValue('consigneTemp', 1)">+</button>
     <div class="val-box" id="consigneTempVal">60°C</div>
   </div>
-
   <div class="card">
     <h2>Kp / Ki / Kd</h2>
     <div>
@@ -76,87 +72,44 @@
       <div class="val-box" id="KdVal">1.0</div>
     </div>
   </div>
-
   <script>
-    // Stockage local des données (remplace l'API)
-    let sechoirData = {
-      temp: 25,
-      hum: 50,
-      consigneTemp: 60,
-      Kp: 5.0,
-      Ki: 0.5,
-      Kd: 1.0
-    };
-
-    // Initialisation des graphiques
     let tempChart = new Chart(document.getElementById('tempChart'), {
       type: 'doughnut',
-      data: {
-        labels: ['Temp', 'Reste'],
-        datasets: [{
-          data: [sechoirData.temp, 100 - sechoirData.temp],
-          backgroundColor: ['#e63946', '#ccc']
-        }]
-      },
-      options: { 
-        cutout: '70%', 
-        responsive: false,
-        plugins: { legend: { display: false } }
-      }
+      data: { labels: ['Temp', 'Reste'], datasets: [{ data: [0, 100], backgroundColor: ['#e63946', '#ccc'] }] },
+      options: { cutout: '70%', responsive: false }
     });
-
     let humChart = new Chart(document.getElementById('humChart'), {
       type: 'doughnut',
-      data: {
-        labels: ['Humidité', 'Reste'],
-        datasets: [{
-          data: [sechoirData.hum, 100 - sechoirData.hum],
-          backgroundColor: ['#457b9d', '#ccc']
-        }]
-      },
-      options: { 
-        cutout: '70%', 
-        responsive: false,
-        plugins: { legend: { display: false } }
-      }
+      data: { labels: ['Humidité', 'Reste'], datasets: [{ data: [0, 100], backgroundColor: ['#457b9d', '#ccc'] }] },
+      options: { cutout: '70%', responsive: false }
     });
-
-    // Gestion des valeurs
     function adjustValue(id, delta) {
-      const el = document.getElementById(id);
-      const step = parseFloat(el.step || 1);
-      const newValue = parseFloat(el.value) + (delta * step);
-      el.value = Math.max(parseFloat(el.min), Math.min(newValue, parseFloat(el.max)));
+      let el = document.getElementById(id);
+      el.value = parseFloat(el.value) + delta;
       updateValue(id, el.value);
     }
-
     function updateValue(id, value) {
-      const numValue = parseFloat(value);
-      sechoirData[id] = numValue; // Mise à jour des données locales
-      
-      const displayValue = numValue.toFixed(id.includes('K') ? 1 : 0);
-      document.getElementById(id + 'Val').innerText = displayValue + (id.includes('Temp') ? '°C' : '');
-      
-      // Simulation d'envoi à l'ESP32 (à remplacer par un vrai appel si besoin)
-      console.log(`Paramètre ${id} mis à jour: ${value}`);
+      document.getElementById(id + 'Val').innerText = value + (id.includes('Temp') ? '°C' : '');
+      let url = '/setPID';
+      if (param.includes('K') || param.includes('Temp')) {
+        let data = new URLSearchParams();
+        data.append(id, value);
+        fetch(url, { method: 'POST', body: data });
+      }
     }
-
-    // Simulation de données aléatoires (à supprimer si vous avez un vrai ESP32)
-    function simulateData() {
-      sechoirData.temp = Math.max(20, Math.min(40, sechoirData.temp + (Math.random() - 0.5)));
-      sechoirData.hum = Math.max(30, Math.min(70, sechoirData.hum + (Math.random() - 0.3)));
-      
-      tempChart.data.datasets[0].data = [sechoirData.temp, 100 - sechoirData.temp];
-      humChart.data.datasets[0].data = [sechoirData.hum, 100 - sechoirData.hum];
-      tempChart.update();
-      humChart.update();
-      
-      document.getElementById('tempVal').innerText = sechoirData.temp.toFixed(1) + '°C';
-      document.getElementById('humVal').innerText = sechoirData.hum.toFixed(1) + '%';
+    function refreshMetrics() {
+      fetch('/metrics')
+        .then(res => res.json())
+        .then(data => {
+          tempChart.data.datasets[0].data = [data.temp, 100 - data.temp];
+          humChart.data.datasets[0].data = [data.hum, 100 - data.hum];
+          tempChart.update();
+          humChart.update();
+          document.getElementById('tempVal').innerText = data.temp + '°C';
+          document.getElementById('humVal').innerText = data.hum + '%';
+        });
     }
-
-    // Pour un vrai projet, remplacer par la connexion à l'ESP32
-    setInterval(simulateData, 3000);
+    setInterval(refreshMetrics, 1000);
   </script>
 </body>
 </html>
